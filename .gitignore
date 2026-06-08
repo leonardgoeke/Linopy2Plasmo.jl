@@ -1,0 +1,19 @@
+# Large data files
+*.nc
+
+# Julia artifacts and build outputs
+Manifest.toml
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+/docs/build/
+
+# Python / Conda environment managed by CondaPkg
+.CondaPkg/
+
+# Editor and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

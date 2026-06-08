@@ -1,0 +1,15 @@
+[package]
+name = "Linopy2Plasmo"
+uuid = "e0e490d6-8454-41e9-b82b-0a314e719dd4"
+authors = ["lgoeke@ethz.ch"]
+version = "0.1.0"
+
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Gurobi = "2e9cd046-0924-5485-92f1-d5272153d98b"
+Plasmo = "d3f7391f-f14a-50cc-bbe4-76a32d1bad3c"
+PlasmoBenders = "491f1417-53b2-48aa-b9da-44cdd6c031b7"
+PlasmoPlots = "a21664a3-f668-4e98-8a13-7892286ec16a"
+PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
