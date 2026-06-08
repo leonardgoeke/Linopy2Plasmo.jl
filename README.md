@@ -1,63 +1,44 @@
 # Linopy2Plasmo.jl
 
-Converts [linopy](https://linopy.readthedocs.io/) optimization models stored as NetCDF files into [Plasmo.jl](https://github.com/lanl-ansi/Plasmo.jl) graph-based optimization problems. This enables the use of graph-decomposition algorithms such as Benders decomposition on models originally built with linopy.
-
-## Package structure
-
-```
-linopy2plasmo/
-├── src/
-│   ├── Linopy2Plasmo.jl    # module entry point
-│   ├── objects.jl          # cnsObj and lin2plasObj data structures
-│   └── functions.jl        # conversion and graph-building functions
-├── scripts/
-│   └── convert.jl          # standalone conversion script (CLI)
-├── Project.toml
-├── Manifest.toml
-└── CondaPkg.toml           # Python environment (linopy)
-```
-
-> **Note:** The example NetCDF file (`PI_small.nc`) is not included in this repository due to its size (~2.4 GB). Provide your own linopy model exported with `model.to_netcdf("model.nc")`.
+Converts [linopy](https://linopy.readthedocs.io/) optimization models stored as NetCDF files into [Plasmo.jl](https://github.com/plasmo-dev/Plasmo.jl) graph-based optimization problems. This enables the use of graph-decomposition algorithms such as Benders decomposition on models originally built with linopy.
 
 ## Installation
 
 ### 1. Julia dependencies
 
-Activate the project environment and instantiate it:
+Download the package and import it:
 
 ```julia
 using Pkg
-Pkg.activate("path/to/linopy2plasmo")
+Pkg.add(PackageSpec(url="https://github.com/leonardgoeke/Linopy2Plasmo.jl.git"))
 Pkg.instantiate()
-```
-
-### 2. Python dependency (linopy)
-
-The package uses [CondaPkg.jl](https://github.com/cjdoris/CondaPkg.jl) to manage the Python environment. After activating the project, run:
-
-```julia
-using CondaPkg
-CondaPkg.resolve()
 ```
 
 ## Usage
 
-The workflow below follows [`scripts/convert.jl`](scripts/convert.jl). Run it from the Julia REPL after activating the project environment.
+Run the code described below from the Julia REPL after activating the project environment.
 
-### 1. Load the package
+### 1. Load the packages
+
+Load the main packages installed above:
 
 ```julia
 using Linopy2Plasmo
+```
+
+Load other package used for the testing here:
+
+```julia
 using Plasmo, PlasmoBenders, PlasmoPlots
-using Gurobi, CSV
+using Gurobi, CSV, DataFrames
 ```
 
 ### 2. Load a linopy model from NetCDF
 
-`lin2plasObj` reads the NetCDF file, extracts all variables, constraints, and the objective function, and maps set indices to integer keys for efficient graph construction.
+As a test, `lin2plasObj` reads the NetCDF file provided in the data folder, extracts all variables, constraints, and the objective function, and maps set indices to integer keys for efficient graph construction.
 
 ```julia
-lin2plas_obj = lin2plasObj("PI_small.nc")
+lin2plas_obj = lin2plasObj("data/testProblem.nc")
 ```
 
 You can inspect the extracted data directly:
@@ -74,7 +55,7 @@ lin2plas_obj.cns[:constraint_couple_storage_level]  # constraint data
 
 ```julia
 split_tup = (:set_time_steps_yearly, :set_nodes, :set_time_steps_operation, :set_time_steps_storage)
-@time structureIntoNodes!(lin2plas_obj, split_tup)
+structureIntoNodes!(lin2plas_obj, split_tup)
 ```
 
 After this call, `lin2plas_obj.nodes` contains all node tuples and `lin2plas_obj.varNode` maps each variable ID to the nodes it appears in.
@@ -91,12 +72,11 @@ For Benders decomposition you need at least two subgraphs — a master (`:top`) 
 
 ```julia
 def_dic = Dict{Symbol, Vector{Tuple{Vararg{Int}}}}()
-def_dic[:top] = filter(x -> x[2] == 0 || (x[3] == 0 && x[4] == 0), lin2plas_obj.nodes)
-nonTop_arr    = filter(x -> !(x[2] == 0 || (x[3] == 0 && x[4] == 0)), lin2plas_obj.nodes)
-
-for (idx, (i, j)) in enumerate(unique(getindex.(nonTop_arr, 1)))
-    def_dic[Symbol(:sub, idx)] = filter(x -> x[1] == i && x[2] == j, nonTop_arr)
+def_dic[:top] = filter(x -> x[1] in (0,) || x[2] == 0, lin2plas_obj.nodes) # all nodes with 0 for for the first or second set form the top-problem
+for (i, j) in enumerate([1,2,3]) # creates three sub-problems depending on value of first node
+    def_dic[Symbol(:sub,i)] = filter(x -> x[1] == j && x[2] != 0, lin2plas_obj.nodes)
 end
+
 ```
 
 ### 5. Build the Plasmo optimization problem
@@ -104,7 +84,7 @@ end
 `createOptProblem!` creates the `OptiGraph`, populates it with `OptiNode`s, adds variables, constraints, linking constraints, and node objectives.
 
 ```julia
-@time createOptProblem!(lin2plas_obj, def_dic)
+createOptProblem!(lin2plas_obj, def_dic)
 ```
 
 Optional — visualize the graph structure:
@@ -142,20 +122,8 @@ run_algorithm!(benders_opt)
 
 ```julia
 var_df = replaceSetColumns(copy(lin2plas_obj.var[:capacity]), lin2plas_obj.revSets)
-
-# standard solve
-var_df[!, :value] = map(
-    x -> Plasmo.value(lin2plas_obj.varMap[(x.key, x.subGraph[1])]),
-    eachrow(var_df),
-)
-
-# Benders solve (pass the algorithm object instead)
-# var_df[!, :value] = map(
-#     x -> Plasmo.value(benders_opt, lin2plas_obj.varMap[(x.key, x.subGraph[1])]),
-#     eachrow(var_df),
-# )
-
-CSV.write("capacity_results.csv", var_df)
+var_df[!,:value] = map(x -> Plasmo.value(benders_opt, lin2plas_obj.varMap[(x.key, x.subGraph[1])]), eachrow(var_df))
+CSV.write("capacity_results.csv", select!(var_df, Not(:subGraph)))
 ```
 
 ## API reference
@@ -164,7 +132,7 @@ CSV.write("capacity_results.csv", var_df)
 
 | Type | Description |
 |---|---|
-| `lin2plasObj(path)` | Reads a linopy NetCDF model and returns the conversion object |
+| `lin2plasObj` | Read-in of a linopy NetCDF model and to be converted into a Plasmo graph |
 | `cnsObj` | Internal representation of a single constraint (variables, RHS, sense) |
 
 ### Key fields of `lin2plasObj`
@@ -195,4 +163,4 @@ CSV.write("capacity_results.csv", var_df)
 ## Known limitations
 
 - Binary and integer variables are not yet supported (continuous variables only).
-- `structureIntoNodes!` is the main performance bottleneck (~95 s / 1.6 GB allocations on an 11 k-constraint model).
+- `structureIntoNodes!` is the main performance bottleneck and should be optimized for large models.
