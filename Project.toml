@@ -1,4 +1,3 @@
-[package]
 name = "Linopy2Plasmo"
 uuid = "e0e490d6-8454-41e9-b82b-0a314e719dd4"
 authors = ["lgoeke@ethz.ch"]
